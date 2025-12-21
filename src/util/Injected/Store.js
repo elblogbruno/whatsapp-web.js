@@ -127,7 +127,9 @@ exports.ExposeStore = () => {
     window.Store.Settings = {
         ...window.require('WAWebUserPrefsGeneral'),
         ...window.require('WAWebUserPrefsNotifications'),
-        ...(setPushname ? { setPushname } : {}),
+        // setPushname is loaded lazily in Client.js after module is available
+        // See: https://github.com/pedroslopez/whatsapp-web.js/pull/3975
+        setPushname: null
     };
 
 
