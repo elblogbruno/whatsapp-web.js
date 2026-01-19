@@ -12,21 +12,13 @@ exports.LoadUtils = () => {
     window.WWebJS.sendSeen = async (chatId) => {
         const chat = await window.WWebJS.getChat(chatId, { getAsModel: false });
         if (chat) {
-            try {
-                window.Store.WAWebStreamModel.Stream.markAvailable();
-                await window.Store.SendSeen.sendSeen({
-                    chat: chat,
-                    threadId: undefined
-                });
-                window.Store.WAWebStreamModel.Stream.markUnavailable();
-                return true;
-            } catch (error) {
-                window.Store.WAWebStreamModel.Stream.markUnavailable();
-                if (error.name === 'TypeError' || error.message?.includes('markedUnread')) {
-                    return true;
-                }
-                throw error;
-            }
+            window.Store.WAWebStreamModel.Stream.markAvailable();
+            await window.Store.SendSeen.sendSeen({
+                chat: chat,
+                threadId: undefined
+            });
+            window.Store.WAWebStreamModel.Stream.markUnavailable();
+            return true;
         }
         return false;
     };
