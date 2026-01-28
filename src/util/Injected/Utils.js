@@ -642,7 +642,7 @@ exports.LoadUtils = () => {
         if (chat.groupMetadata) {
             model.isGroup = true;
             const chatWid = window.Store.WidFactory.createWid(chat.id._serialized);
-            await window.Store.GroupMetadata.update(chatWid);
+            await window.Store.GroupMetadata?.update(chatWid);
             chat.groupMetadata.participants._models
                 .filter(x => x.id?._serialized?.endsWith('@lid'))
                 .forEach(x => x.contact?.phoneNumber && (x.id = x.contact.phoneNumber));
@@ -651,7 +651,7 @@ exports.LoadUtils = () => {
         }
 
         if (chat.newsletterMetadata) {
-            await window.Store.NewsletterMetadataCollection.update(chat.id);
+            await window.Store.NewsletterMetadataCollection?.update(chat.id);
             model.channelMetadata = chat.newsletterMetadata.serialize();
             model.channelMetadata.createdAtTs = chat.newsletterMetadata.creationTime;
         }
