@@ -517,22 +517,13 @@ declare namespace WAWebJS {
         ) => void): this
 
         /** Emitted periodically with Node.js and browser memory metrics when enableMemoryMonitoring is true */
-        on(event: 'memory_metrics', listener: (
-            metrics: {
-                node: { rss: number, heapUsed: number, heapTotal: number, external: number, arrayBuffers: number },
-                browser: object | null,
-                timestamp: number
-            }
-        ) => void): this
+        on(event: 'memory_metrics', listener: (metrics: MemoryMetrics) => void): this
 
         /** Emitted when Node.js RSS exceeds the configured memoryBudget */
-        on(event: 'memory_budget_exceeded', listener: (
-            metrics: {
-                node: { rss: number, heapUsed: number, heapTotal: number, external: number, arrayBuffers: number },
-                browser: object | null,
-                timestamp: number
-            }
-        ) => void): this
+        on(event: 'memory_budget_exceeded', listener: (metrics: MemoryMetrics) => void): this
+
+        /** Get current memory metrics from Node.js and the Chromium renderer */
+        getMemoryMetrics(): Promise<MemoryMetrics | null>
     }
 
     /** Current connection information */
@@ -668,6 +659,33 @@ declare namespace WAWebJS {
         /** Maximum messages per chat when messageStoreLimit is set.
          * @default 500 */
         messagesPerChat?: number,
+    }
+
+    /** Shape of the browser-side metrics returned in memory events */
+    export interface BrowserMemoryMetrics {
+        messages: number,
+        chats: number,
+        contacts: number,
+        calls: number,
+        blobCacheSize: number,
+        performanceMemory: {
+            usedJSHeapSize: number,
+            totalJSHeapSize: number,
+            jsHeapSizeLimit: number,
+        } | null,
+    }
+
+    /** Shape of the full metrics snapshot emitted by memory events */
+    export interface MemoryMetrics {
+        node: {
+            rss: number,
+            heapUsed: number,
+            heapTotal: number,
+            external: number,
+            arrayBuffers: number,
+        },
+        browser: BrowserMemoryMetrics | null,
+        timestamp: number,
     }
 
     export interface LocalWebCacheOptions {
