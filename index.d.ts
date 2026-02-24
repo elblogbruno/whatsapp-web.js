@@ -641,6 +641,10 @@ declare namespace WAWebJS {
         /** Hostnames to block when enableResourceBlocking is true.
          * @default [] */
         blockedDomains?: string[],
+        /** Allow WhatsApp CDN domains through even when resource types are blocked.
+         * Set to false to also block WhatsApp media CDN (thumbnails, downloadMedia won't work).
+         * @default true */
+        allowWhatsAppCDN?: boolean,
         /** Emit memory_metrics events periodically.
          * @default false */
         enableMemoryMonitoring?: boolean,

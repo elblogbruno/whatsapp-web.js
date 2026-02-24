@@ -1031,9 +1031,10 @@ class Client extends EventEmitter {
             ...(this.options.allowedImagePatterns || [])
         ];
 
-        // WhatsApp media CDN domains – must ALWAYS pass through so that
-        // downloadMedia() and thumbnails from users keep working even when
-        // 'image' or 'media' resource types are blocked.
+        // WhatsApp media CDN domains – pass through so that downloadMedia()
+        // and thumbnails from users keep working even when 'image' or 'media'
+        // resource types are blocked.  Controlled by options.allowWhatsAppCDN.
+        const allowCDN = this.options.allowWhatsAppCDN !== false;
         const WHATSAPP_MEDIA_CDN = [
             '.whatsapp.net',
             '.whatsapp.com',
@@ -1050,8 +1051,8 @@ class Client extends EventEmitter {
             const url          = request.url();
             const resourceType = request.resourceType();
 
-            // Always allow WhatsApp's own CDN – media downloads, thumbnails, etc.
-            if (WHATSAPP_MEDIA_CDN.some(cdn => url.includes(cdn))) {
+            // Allow WhatsApp's own CDN – media downloads, thumbnails, etc.
+            if (allowCDN && WHATSAPP_MEDIA_CDN.some(cdn => url.includes(cdn))) {
                 return request.continue();
             }
 

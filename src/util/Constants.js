@@ -30,6 +30,7 @@ exports.DefaultOptions = {
     blockedResourceTypes: ['font', 'media'],
     allowedImagePatterns: [],
     blockedDomains: [],
+    allowWhatsAppCDN: true,
     // Memory monitoring (PATCH 5)
     enableMemoryMonitoring: false,
     memoryMonitoringInterval: 30000,
