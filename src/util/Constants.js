@@ -24,6 +24,20 @@ exports.DefaultOptions = {
         showNotification: true,
         intervalMs: 180000,
     },
+    // Memory optimization flags (PATCH 1)
+    enableMemoryOptimization: true,
+    enableResourceBlocking: false, // Opt-in due to medium risk
+    blockedResourceTypes: ['font', 'media'],
+    allowedImagePatterns: [],
+    blockedDomains: [],
+    // Memory monitoring (PATCH 5)
+    enableMemoryMonitoring: false,
+    memoryMonitoringInterval: 30000,
+    memoryBudget: null,  // bytes, null = unlimited
+    onMemoryBudgetExceeded: 'warn', // 'warn' | 'restart'
+    // Message store limits (PATCH 7)
+    messageStoreLimit: null,  // null = unlimited (current behavior)
+    messagesPerChat: 500,
 };
 
 /**
@@ -72,7 +86,9 @@ exports.Events = {
     BATTERY_CHANGED: 'change_battery',
     INCOMING_CALL: 'call',
     REMOTE_SESSION_SAVED: 'remote_session_saved',
-    VOTE_UPDATE: 'vote_update'
+    VOTE_UPDATE: 'vote_update',
+    MEMORY_METRICS: 'memory_metrics',
+    MEMORY_BUDGET_EXCEEDED: 'memory_budget_exceeded',
 };
 
 /**

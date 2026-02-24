@@ -498,6 +498,21 @@ class Message extends Base {
         }, this.id._serialized);
 
         if (!result) return undefined;
+        
+        // Clear blob URL from cache after download to allow GC (PATCH 4)
+        await this.client.pupPage.evaluate((msgId) => {
+            try {
+                const msg = window.Store.Msg.get(msgId);
+                if (msg && msg.mediaData && msg.mediaData.blobUrl) {
+                    if (window.Store.BlobCache && typeof window.Store.BlobCache.maybeRevoke === 'function') {
+                        window.Store.BlobCache.maybeRevoke(msg.mediaData.blobUrl);
+                    }
+                }
+            } catch (e) {
+                // Silently fail if method doesn't exist
+            }
+        }, this.id._serialized).catch(() => {});
+        
         return new MessageMedia(result.mimetype, result.data, result.filename, result.filesize);
     }
 

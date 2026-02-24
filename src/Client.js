@@ -18,6 +18,7 @@ const WebCacheFactory = require('./webCache/WebCacheFactory');
 const { ClientInfo, Message, MessageMedia, Contact, Location, Poll, PollVote, GroupNotification, Label, Call, Buttons, List, Reaction, Broadcast, ScheduledEvent } = require('./structures');
 const NoAuth = require('./authStrategies/NoAuth');
 const {exposeFunctionIfAbsent} = require('./util/Puppeteer');
+const MemoryMonitor = require('./util/MemoryMonitor');
 
 /**
  * Starting point for interacting with the WhatsApp Web API
@@ -91,6 +92,9 @@ class Client extends EventEmitter {
         this._readyEmitted = false; // Prevent duplicate READY events
 
         Util.setFfmpegPath(this.options.ffmpegPath);
+
+        // Initialize memory monitor (PATCH 5)
+        this.memoryMonitor = new MemoryMonitor(this);
     }
     /**
      * Injection logic
@@ -269,6 +273,15 @@ class Client extends EventEmitter {
                     //Load util functions (serializers, helper functions)
                     await this.pupPage.evaluate(LoadUtils);
 
+                    // Setup message store capping if enabled (PATCH 7)
+                    if (this.options.messageStoreLimit) {
+                        await this.pupPage.evaluate((maxTotal, maxPerChat) => {
+                            if (typeof window.WWebJS.setupMessageStoreCap === 'function') {
+                                window.WWebJS.setupMessageStoreCap(maxTotal, maxPerChat);
+                            }
+                        }, this.options.messageStoreLimit, this.options.messagesPerChat || 500);
+                    }
+
                     // Wait for WAWebSetPushnameConnAction module to be available and assign to Store.Settings
                     // This module may not be loaded immediately when restoring an existing session
                     // See: https://github.com/pedroslopez/whatsapp-web.js/pull/3975
@@ -304,6 +317,13 @@ class Client extends EventEmitter {
                 this._readyEmitted = true;
                 this.emit(Events.READY);
                 this.authStrategy.afterAuthReady();
+
+                // Start memory monitoring if enabled (PATCH 5)
+                if (this.options.enableMemoryMonitoring) {
+                    this.memoryMonitor.startMonitoring(
+                        this.options.memoryMonitoringInterval || 30000
+                    );
+                }
             } catch (err) {
                 // Emit error event so users can handle initialization failures
                 // Without this, errors in this callback silently prevent ready from firing
@@ -374,8 +394,42 @@ class Client extends EventEmitter {
             if(this.options.userAgent !== false && !browserArgs.find(arg => arg.includes('--user-agent'))) {
                 browserArgs.push(`--user-agent=${this.options.userAgent}`);
             }
+            
             // navigator.webdriver fix
             browserArgs.push('--disable-blink-features=AutomationControlled');
+            
+            // Memory optimization args – only added when enableMemoryOptimization is true (default) (PATCH 1)
+            const memoryArgs = [
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--disable-gpu',
+                '--disable-software-rasterizer',
+                '--disable-background-networking',
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-breakpad',
+                '--disable-client-side-phishing-detection',
+                '--disable-component-extensions-with-background-pages',
+                '--disable-default-apps',
+                '--disable-extensions',
+                '--disable-sync',
+                '--disable-translate',
+                '--disable-features=TranslateUI,BlinkGenPropertyTrees',
+                '--enable-features=NetworkService,NetworkServiceInProcess',
+                '--disable-renderer-backgrounding',
+                '--disk-cache-size=1',
+                '--media-cache-size=1',
+            ];
+            if (this.options.enableMemoryOptimization !== false) {
+                memoryArgs.forEach(arg => {
+                    const argName = arg.split('=')[0];
+                    if (!browserArgs.some(existing => existing.startsWith(argName))) {
+                        browserArgs.push(arg);
+                    }
+                });
+            }
 
             browser = await puppeteer.launch({...puppeteerOpts, args: browserArgs});
             page = (await browser.pages())[0];
@@ -394,6 +448,9 @@ class Client extends EventEmitter {
 
         await this.authStrategy.afterBrowserInitialized();
         await this.initWebVersionCache();
+
+        // Initialize resource blocker AFTER version cache to avoid request handler conflicts (PATCH 6)
+        await this.initResourceBlocker();
         
         if (this.options.evalOnNewDoc !== undefined) {
             await page.evaluateOnNewDocument(this.options.evalOnNewDoc);
@@ -952,9 +1009,91 @@ class Client extends EventEmitter {
     }
 
     /**
+     * Initialize request interception to block unnecessary resource types and
+     * tracking domains, reducing renderer memory usage (PATCH 6).
+     * Opt-in via options.enableResourceBlocking = true.
+     * Private method.
+     */
+    async initResourceBlocker() {
+        if (!this.options.enableResourceBlocking) {
+            return;
+        }
+
+        await this.pupPage.setRequestInterception(true);
+
+        const BLOCKED_RESOURCE_TYPES = new Set(
+            this.options.blockedResourceTypes || ['font', 'media']
+        );
+
+        const ALLOWED_IMAGE_PATTERNS = [
+            /web\.whatsapp\.com\/img/,
+            /static\.whatsapp\.net.*emoji/,
+            ...(this.options.allowedImagePatterns || [])
+        ];
+
+        const BLOCKED_DOMAINS = [
+            'google-analytics.com',
+            'doubleclick.net',
+            ...(this.options.blockedDomains || [])
+        ];
+
+        this.pupPage.on('request', (request) => {
+            const url          = request.url();
+            const resourceType = request.resourceType();
+
+            // Block known tracking/analytics domains
+            if (BLOCKED_DOMAINS.some(domain => url.includes(domain))) {
+                return request.abort('blockedbyclient');
+            }
+
+            // Block configured resource types
+            if (BLOCKED_RESOURCE_TYPES.has(resourceType)) {
+                if (resourceType === 'image') {
+                    const allowed = ALLOWED_IMAGE_PATTERNS.some(pattern => pattern.test(url));
+                    if (allowed) return request.continue();
+                }
+                return request.abort('blockedbyclient');
+            }
+
+            request.continue();
+        });
+    }
+
+    /**
+     * Get current memory metrics from Node.js and the Chromium renderer.
+     * @returns {Promise<Object>}
+     */
+    async getMemoryMetrics() {
+        if (!this.memoryMonitor) return null;
+        return await this.memoryMonitor.getMetrics();
+    }
+
+    /**
      * Closes the client
      */
     async destroy() {
+        // Stop memory monitoring (PATCH 5)
+        if (this.memoryMonitor) {
+            this.memoryMonitor.stopMonitoring();
+        }
+
+        // Remove page-level listeners to prevent GC root retention (PATCH 2)
+        if (this.pupPage) {
+            this.pupPage.removeAllListeners('request');
+            this.pupPage.removeAllListeners('response');
+            this.pupPage.removeAllListeners('framenavigated');
+        }
+
+        // Clear pairing code interval in page context (PATCH 2)
+        if (this.pupPage && !this.pupPage.isClosed()) {
+            await this.pupPage.evaluate(() => {
+                if (window.codeInterval) {
+                    clearInterval(window.codeInterval);
+                    window.codeInterval = null;
+                }
+            }).catch(() => {});
+        }
+
         // Allow IndexedDB and blob storage to flush pending writes before closing
         // This helps prevent session corruption, especially for Business WhatsApp accounts
         // See: https://github.com/pedroslopez/whatsapp-web.js/issues/5717
@@ -972,8 +1111,20 @@ class Client extends EventEmitter {
             // Give browser time to flush any pending IndexedDB writes
             await new Promise(resolve => setTimeout(resolve, 3000));
         }
-        await this.pupBrowser.close();
+
+        // Close browser
+        if (this.pupBrowser) {
+            await this.pupBrowser.close();
+        }
+
         await this.authStrategy.destroy();
+
+        // Release references to help GC (PATCH 2)
+        this.pupPage = null;
+        this.pupBrowser = null;
+        this.info = null;
+        this.interface = null;
+        this.currentIndexHtml = null;
     }
 
     /**

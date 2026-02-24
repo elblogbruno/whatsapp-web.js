@@ -1221,4 +1221,70 @@ exports.LoadUtils = () => {
         }
         return color;
     };
+
+    /**
+     * Setup message store capping to prevent unbounded memory growth (PATCH 7).
+     * Intercepts Backbone add/reset on window.Store.Msg and prunes oldest
+     * non-starred, non-pinned messages when limits are reached.
+     * @param {number} maxTotal  Absolute cap on total messages across all chats
+     * @param {number} maxPerChat  Cap per individual chat
+     */
+    window.WWebJS.setupMessageStoreCap = (maxTotal, maxPerChat) => {
+        if (!maxTotal || !window.Store || !window.Store.Msg) return;
+
+        let totalMessages = window.Store.Msg.models?.length || 0;
+
+        const originalAdd   = window.Store.Msg.add.bind(window.Store.Msg);
+        const originalReset = window.Store.Msg.reset.bind(window.Store.Msg);
+
+        // Override add to enforce limits
+        window.Store.Msg.add = function (msg, options) {
+            // Per-chat limit
+            if (maxPerChat) {
+                const chat = window.Store.Chat.get(msg && msg.id && msg.id.remote);
+                if (chat && chat.msgs) {
+                    const chatMsgs = chat.msgs.getModelsArray ? chat.msgs.getModelsArray() : (chat.msgs.models || []);
+                    if (chatMsgs.length >= maxPerChat) {
+                        const toRemove = chatMsgs
+                            .filter(m => !m.star && !m.isPinned)
+                            .slice(0, Math.ceil(maxPerChat * 0.1)); // remove oldest 10 %
+                        toRemove.forEach(m => {
+                            chat.msgs.remove(m);
+                            window.Store.Msg.remove(m);
+                            totalMessages = Math.max(0, totalMessages - 1);
+                        });
+                    }
+                }
+            }
+
+            // Global limit
+            if (totalMessages >= maxTotal) {
+                const chats = window.Store.Chat.getModelsArray
+                    ? window.Store.Chat.getModelsArray()
+                    : (window.Store.Chat.models || []);
+                const sorted = [...chats].sort((a, b) => ((a.t || 0) - (b.t || 0))); // oldest first
+
+                for (const c of sorted.slice(0, 20)) {
+                    if (!c.msgs) continue;
+                    const cMsgs = c.msgs.getModelsArray ? c.msgs.getModelsArray() : (c.msgs.models || []);
+                    const victims = cMsgs.filter(m => !m.star && !m.isPinned).slice(0, 100);
+                    victims.forEach(m => {
+                        c.msgs.remove(m);
+                        window.Store.Msg.remove(m);
+                        totalMessages = Math.max(0, totalMessages - 1);
+                    });
+                    if (totalMessages < maxTotal * 0.9) break;
+                }
+            }
+
+            totalMessages++;
+            return originalAdd(msg, options);
+        };
+
+        // Track resets so the counter stays accurate
+        window.Store.Msg.reset = function (models, options) {
+            totalMessages = (models && models.length) ? models.length : 0;
+            return originalReset(models, options);
+        };
+    };
 };

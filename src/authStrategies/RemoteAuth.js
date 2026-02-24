@@ -72,7 +72,10 @@ class RemoteAuth extends BaseAuthStrategy {
     }
 
     async destroy() {
-        clearInterval(this.backupSync);
+        if (this.backupSync) {
+            clearInterval(this.backupSync);
+            this.backupSync = null;
+        }
     }
 
     async disconnect() {
