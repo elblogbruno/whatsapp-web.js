@@ -1047,6 +1047,8 @@ class Client extends EventEmitter {
             ...(this.options.blockedDomains || [])
         ];
 
+        const logBlocked = !!this.options.logBlockedRequests;
+
         this.pupPage.on('request', (request) => {
             const url          = request.url();
             const resourceType = request.resourceType();
@@ -1058,6 +1060,7 @@ class Client extends EventEmitter {
 
             // Block known tracking/analytics domains
             if (BLOCKED_DOMAINS.some(domain => url.includes(domain))) {
+                if (logBlocked) console.log(`[wwebjs][blocked][domain] ${resourceType} ${url}`);
                 return request.abort('blockedbyclient');
             }
 
@@ -1067,6 +1070,7 @@ class Client extends EventEmitter {
                     const allowed = ALLOWED_IMAGE_PATTERNS.some(pattern => pattern.test(url));
                     if (allowed) return request.continue();
                 }
+                if (logBlocked) console.log(`[wwebjs][blocked][${resourceType}] ${url}`);
                 return request.abort('blockedbyclient');
             }
 

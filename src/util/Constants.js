@@ -31,6 +31,7 @@ exports.DefaultOptions = {
     allowedImagePatterns: [],
     blockedDomains: [],
     allowWhatsAppCDN: true,
+    logBlockedRequests: false,
     // Memory monitoring (PATCH 5)
     enableMemoryMonitoring: false,
     memoryMonitoringInterval: 30000,

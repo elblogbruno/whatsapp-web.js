@@ -645,6 +645,9 @@ declare namespace WAWebJS {
          * Set to false to also block WhatsApp media CDN (thumbnails, downloadMedia won't work).
          * @default true */
         allowWhatsAppCDN?: boolean,
+        /** Log blocked request URLs to console for debugging.
+         * @default false */
+        logBlockedRequests?: boolean,
         /** Emit memory_metrics events periodically.
          * @default false */
         enableMemoryMonitoring?: boolean,
