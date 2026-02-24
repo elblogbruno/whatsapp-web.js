@@ -515,6 +515,24 @@ declare namespace WAWebJS {
         on(event: 'vote_update', listener: (
             vote: PollVote
         ) => void): this
+
+        /** Emitted periodically with Node.js and browser memory metrics when enableMemoryMonitoring is true */
+        on(event: 'memory_metrics', listener: (
+            metrics: {
+                node: { rss: number, heapUsed: number, heapTotal: number, external: number, arrayBuffers: number },
+                browser: object | null,
+                timestamp: number
+            }
+        ) => void): this
+
+        /** Emitted when Node.js RSS exceeds the configured memoryBudget */
+        on(event: 'memory_budget_exceeded', listener: (
+            metrics: {
+                node: { rss: number, heapUsed: number, heapTotal: number, external: number, arrayBuffers: number },
+                browser: object | null,
+                timestamp: number
+            }
+        ) => void): this
     }
 
     /** Current connection information */
@@ -617,6 +635,39 @@ declare namespace WAWebJS {
          * }
         */
         pairWithPhoneNumber?: {phoneNumber: string, showNotification?: boolean, intervalMs?: number}
+        /** Automatically adds memory-saving Chromium flags on launch.
+         * @default true */
+        enableMemoryOptimization?: boolean,
+        /** Enable request interception to block fonts, media and tracking domains.
+         * @default false */
+        enableResourceBlocking?: boolean,
+        /** Resource types to block when enableResourceBlocking is true.
+         * @default ['font', 'media'] */
+        blockedResourceTypes?: string[],
+        /** Regex patterns for image URLs that should NOT be blocked.
+         * @default [] */
+        allowedImagePatterns?: RegExp[],
+        /** Hostnames to block when enableResourceBlocking is true.
+         * @default [] */
+        blockedDomains?: string[],
+        /** Emit memory_metrics events periodically.
+         * @default false */
+        enableMemoryMonitoring?: boolean,
+        /** Interval in ms between memory_metrics events.
+         * @default 30000 */
+        memoryMonitoringInterval?: number,
+        /** Node.js RSS threshold in bytes. Emits memory_budget_exceeded when exceeded. null = disabled.
+         * @default null */
+        memoryBudget?: number | null,
+        /** Action to take when memoryBudget is exceeded.
+         * @default 'warn' */
+        onMemoryBudgetExceeded?: 'warn' | 'restart',
+        /** Maximum total messages kept in the browser store across all chats. null = unlimited.
+         * @default null */
+        messageStoreLimit?: number | null,
+        /** Maximum messages per chat when messageStoreLimit is set.
+         * @default 500 */
+        messagesPerChat?: number,
     }
 
     export interface LocalWebCacheOptions {
@@ -899,6 +950,8 @@ declare namespace WAWebJS {
         REMOTE_SESSION_SAVED = 'remote_session_saved',
         INCOMING_CALL = 'call',
         VOTE_UPDATE = 'vote_update',
+        MEMORY_METRICS = 'memory_metrics',
+        MEMORY_BUDGET_EXCEEDED = 'memory_budget_exceeded',
     }
 
     /** Group notification types */
