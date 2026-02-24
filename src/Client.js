@@ -1031,6 +1031,15 @@ class Client extends EventEmitter {
             ...(this.options.allowedImagePatterns || [])
         ];
 
+        // WhatsApp media CDN domains – must ALWAYS pass through so that
+        // downloadMedia() and thumbnails from users keep working even when
+        // 'image' or 'media' resource types are blocked.
+        const WHATSAPP_MEDIA_CDN = [
+            '.whatsapp.net',
+            '.whatsapp.com',
+            '.cdn.whatsapp.net',
+        ];
+
         const BLOCKED_DOMAINS = [
             'google-analytics.com',
             'doubleclick.net',
@@ -1040,6 +1049,11 @@ class Client extends EventEmitter {
         this.pupPage.on('request', (request) => {
             const url          = request.url();
             const resourceType = request.resourceType();
+
+            // Always allow WhatsApp's own CDN – media downloads, thumbnails, etc.
+            if (WHATSAPP_MEDIA_CDN.some(cdn => url.includes(cdn))) {
+                return request.continue();
+            }
 
             // Block known tracking/analytics domains
             if (BLOCKED_DOMAINS.some(domain => url.includes(domain))) {
