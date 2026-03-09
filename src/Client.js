@@ -287,6 +287,8 @@ class Client extends EventEmitter {
      * Sets up events and requirements, kicks off authentication request
      */
     async initialize() {
+        this.lastLoggedOut = false;
+        this._readyEmitted = false;
 
         let 
             /**
@@ -352,8 +354,6 @@ class Client extends EventEmitter {
                     await this.authStrategy.afterBrowserInitialized();
                     this.lastLoggedOut = false;
                 }
-                // Wait for the page to finish loading before re-injecting
-                await this.pupPage.waitForNavigation({ waitUntil: 'load', timeout: 15000 }).catch(() => {});
                 await this.inject();
             } catch (err) {
                 // Ignore context destruction errors during navigation; 
