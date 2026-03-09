@@ -344,14 +344,27 @@ class Client extends EventEmitter {
         });
 
         this.pupPage.on('framenavigated', async (frame) => {
-            if(frame.url().includes('post_logout=1') || this.lastLoggedOut) {
-                this.emit(Events.DISCONNECTED, 'LOGOUT');
-                await this.authStrategy.logout();
-                await this.authStrategy.beforeBrowserInitialized();
-                await this.authStrategy.afterBrowserInitialized();
-                this.lastLoggedOut = false;
+            try {
+                if(frame.url().includes('post_logout=1') || this.lastLoggedOut) {
+                    this.emit(Events.DISCONNECTED, 'LOGOUT');
+                    await this.authStrategy.logout();
+                    await this.authStrategy.beforeBrowserInitialized();
+                    await this.authStrategy.afterBrowserInitialized();
+                    this.lastLoggedOut = false;
+                }
+                // Wait for the page to finish loading before re-injecting
+                await this.pupPage.waitForNavigation({ waitUntil: 'load', timeout: 15000 }).catch(() => {});
+                await this.inject();
+            } catch (err) {
+                // Ignore context destruction errors during navigation; 
+                // the next framenavigated event will retry inject()
+                if (err?.message?.includes('Execution context was destroyed') ||
+                    err?.message?.includes('Target closed') ||
+                    err?.message?.includes('frame was detached')) {
+                    return;
+                }
+                throw err;
             }
-            await this.inject();
         });
 
         await this.inject();
