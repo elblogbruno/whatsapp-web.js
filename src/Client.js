@@ -94,17 +94,10 @@ class Client extends EventEmitter {
         if(this.options.authTimeoutMs === undefined || this.options.authTimeoutMs==0){
             this.options.authTimeoutMs = 30000;
         }
-        let start = Date.now();
         let timeout = this.options.authTimeoutMs;
-        let res = false;
-        while(start > (Date.now() - timeout)){
-            res = await this.pupPage.evaluate('window.Debug?.VERSION != undefined');
-            if(res){break;}
-            await new Promise(r => setTimeout(r, 200));
-        }
-        if(!res){ 
+        await this.pupPage.waitForFunction('window.Debug?.VERSION != undefined', { timeout }).catch(() => {
             throw 'auth timeout';
-        }       
+        });       
         await this.setDeviceName(this.options.deviceName, this.options.browserName);
         const pairWithPhoneNumber = this.options.pairWithPhoneNumber;
         const version = await this.getWWebVersion();
@@ -228,17 +221,9 @@ class Client extends EventEmitter {
                 //Load util functions (serializers, helper functions)
                 await this.pupPage.evaluate(LoadUtils);
                 
-                let start = Date.now();
-                let res = false;
-                while(start > (Date.now() - 30000)){
-                    // Check window.WWebJS Injection
-                    res = await this.pupPage.evaluate('window.WWebJS != undefined');
-                    if(res){break;}
-                    await new Promise(r => setTimeout(r, 200));
-                }
-                if(!res){
+                await this.pupPage.waitForFunction('window.WWebJS != undefined', { timeout: 30000 }).catch(() => {
                     throw 'ready timeout';
-                }
+                });
             
                 /**
                      * Current connection information
@@ -355,8 +340,6 @@ class Client extends EventEmitter {
             referer: 'https://whatsapp.com/'
         });
 
-        await this.inject();
-
         this.pupPage.on('framenavigated', async (frame) => {
             if(frame.url().includes('post_logout=1') || this.lastLoggedOut) {
                 this.emit(Events.DISCONNECTED, 'LOGOUT');
@@ -367,6 +350,8 @@ class Client extends EventEmitter {
             }
             await this.inject();
         });
+
+        await this.inject();
     }
 
     /**
