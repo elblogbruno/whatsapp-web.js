@@ -18,14 +18,18 @@ class RemoteWebCache extends WebCache {
 
     async resolve(version) {
         const remotePath = this.remotePath.replace('{version}', version);
+        console.log(`[wwebjs] RemoteWebCache: fetching ${remotePath}`);
 
         try {
             const cachedRes = await fetch(remotePath);
             if (cachedRes.ok) {
-                return cachedRes.text();
+                const content = await cachedRes.text();
+                console.log(`[wwebjs] RemoteWebCache: fetch OK (${cachedRes.status}), ${content.length} bytes`);
+                return content;
             }
+            console.warn(`[wwebjs] RemoteWebCache: fetch failed with status ${cachedRes.status} for ${remotePath}`);
         } catch (err) {
-            console.error(`Error fetching version ${version} from remote`, err);
+            console.error(`[wwebjs] RemoteWebCache: fetch error for ${remotePath}`, err.message || err);
         }
 
         if (this.strict) throw new VersionResolveError(`Couldn't load version ${version} from the archive`);

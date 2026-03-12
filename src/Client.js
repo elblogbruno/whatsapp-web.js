@@ -814,9 +814,11 @@ class Client extends EventEmitter {
         const webCache = WebCacheFactory.createWebCache(webCacheType, webCacheOptions);
 
         const requestedVersion = this.options.webVersion;
+        console.log(`[wwebjs] Resolving WWeb version cache: type=${webCacheType}, requestedVersion=${requestedVersion}`);
         const versionContent = await webCache.resolve(requestedVersion);
 
         if(versionContent) {
+            console.log(`[wwebjs] WWeb version cache HIT — intercepting page load with cached HTML (${versionContent.length} bytes)`);
             await this.pupPage.setRequestInterception(true);
             this.pupPage.on('request', async (req) => {
                 if(req.url() === WhatsWebURL) {
@@ -830,6 +832,7 @@ class Client extends EventEmitter {
                 }
             });
         } else {
+            console.warn(`[wwebjs] WWeb version cache MISS — loading latest WhatsApp Web from server (requestedVersion=${requestedVersion}, cacheType=${webCacheType})`);
             this.pupPage.on('response', async (res) => {
                 if(res.ok() && res.url() === WhatsWebURL) {
                     const indexHtml = await res.text();
