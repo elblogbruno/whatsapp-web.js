@@ -268,9 +268,18 @@ class Client extends EventEmitter {
         await this.pupPage.evaluate(() => {
             const Socket = window.require('WAWebSocketModel').Socket;
             Socket.on('change:state', (_AppState, state) => { window.onAuthAppStateChangedEvent(state); });
-            Socket.on('change:hasSynced', () => { window.onAppStateHasSyncedEvent(); });
-            // If hasSynced is already true (e.g. after a navigation post-pairing), trigger immediately
-            if (Socket.hasSynced) { window.onAppStateHasSyncedEvent(); }
+            
+            // Check initial state before listening (AppState.hasSynced may already be true)
+            if (Socket.hasSynced) {
+                window.onAppStateHasSyncedEvent();
+            }
+            
+            // Guard against hasSynced false transitions
+            Socket.on('change:hasSynced', (_AppState, hasSynced) => {
+                if (hasSynced) {
+                    window.onAppStateHasSyncedEvent();
+                }
+            });
             const Cmd = window.require('WAWebCmd').Cmd;
             Cmd.on('offline_progress_update_from_bridge', () => {
                 window.onOfflineProgressUpdateEvent(window.AuthStore.OfflineMessageHandler.getOfflineDeliveryProgress()); 
