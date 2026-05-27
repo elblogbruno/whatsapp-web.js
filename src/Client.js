@@ -103,6 +103,7 @@ class Client extends EventEmitter {
 
         this.currentIndexHtml = null;
         this.lastLoggedOut = false;
+        this._readyEmitted = false; // Prevent duplicate READY events
 
         Util.setFfmpegPath(this.options.ffmpegPath);
     }
@@ -1230,7 +1231,10 @@ class Client extends EventEmitter {
                         }),
                     );
 
-                    window.onPollVoteEvent(votes);
+            // Connection/battery listener
+            if (window.Store.Conn) {
+                window.Store.Conn.on('change:battery', (state) => { window.onBatteryStateChangedEvent(state); });
+            }
 
                     return origFunction.apply(module, args);
                 },
