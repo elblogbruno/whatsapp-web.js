@@ -32,18 +32,12 @@ async function exposeFunctionIfAbsent(page, name, fn) {
 
     const exposePromise = (async () => {
         try {
-            const exist = await page.evaluate((bindingName) => {
-                return !!window[bindingName];
-            }, name);
-
-            if (!exist) {
-                await page.exposeFunction(name, fn);
-            }
+            await page.exposeFunction(name, fn);
 
             exposedFunctions.names.add(name);
         } catch (error) {
             const message = error?.message || String(error);
-            if (message.includes(`window['${name}'] already exists!`)) {
+            if (message.includes('already exists')) {
                 exposedFunctions.names.add(name);
                 return;
             }
