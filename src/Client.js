@@ -1284,9 +1284,26 @@ class Client extends EventEmitter {
      */
     async destroy() {
         const browser = this.pupBrowser;
-        const isConnected = browser?.isConnected?.();
-        if (isConnected) {
-            await browser.close();
+        if (browser) {
+            const pid = browser.process?.()?.pid;
+            try {
+                if (browser.isConnected?.()) {
+                    await Promise.race([
+                        browser.close(),
+                        new Promise((_, reject) =>
+                            setTimeout(() => reject(new Error('Browser close timeout')), 10000)
+                        ),
+                    ]);
+                }
+            } catch (e) {
+                if (pid) {
+                    try {
+                        process.kill(pid, 'SIGKILL');
+                    } catch (killError) {
+                        // ignore
+                    }
+                }
+            }
         }
         await this.authStrategy.destroy();
     }
