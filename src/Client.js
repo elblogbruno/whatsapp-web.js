@@ -113,6 +113,7 @@ class Client extends EventEmitter {
      * Private function
      */
     async inject() {
+        this._readyEmitted = false;
         if (
             this.options.authTimeoutMs === undefined ||
             this.options.authTimeoutMs == 0
@@ -300,6 +301,8 @@ class Client extends EventEmitter {
             this.pupPage,
             'onAppStateHasSyncedEvent',
             async () => {
+                if (this._readyEmitted) return;
+                this._readyEmitted = true;
                 const authEventPayload =
                     await this.authStrategy.getAuthEventPayload();
                 /**
@@ -402,16 +405,16 @@ class Client extends EventEmitter {
             },
         );
         await this.pupPage.evaluate(() => {
-            window
-                .require('WAWebSocketModel')
-                .Socket.on('change:state', (_AppState, state) => {
-                    window.onAuthAppStateChangedEvent(state);
-                });
-            window
-                .require('WAWebSocketModel')
-                .Socket.on('change:hasSynced', () => {
-                    window.onAppStateHasSyncedEvent();
-                });
+            const socket = window.require('WAWebSocketModel').Socket;
+            socket.on('change:state', (_AppState, state) => {
+                window.onAuthAppStateChangedEvent(state);
+            });
+            if (socket.hasSynced) {
+                window.onAppStateHasSyncedEvent();
+            }
+            socket.on('change:hasSynced', () => {
+                window.onAppStateHasSyncedEvent();
+            });
             const Cmd = window.require('WAWebCmd').Cmd;
             Cmd.on('offline_progress_update_from_bridge', () => {
                 window.onOfflineProgressUpdateEvent(
