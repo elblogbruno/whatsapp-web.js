@@ -502,6 +502,7 @@ class Client extends EventEmitter {
         await this.inject();
 
         this.pupPage.on('framenavigated', async (frame) => {
+            if (frame !== this.pupPage.mainFrame()) return;
             if (frame.url().includes('post_logout=1') || this.lastLoggedOut) {
                 this.emit(Events.DISCONNECTED, 'LOGOUT');
                 await this.authStrategy.logout();
