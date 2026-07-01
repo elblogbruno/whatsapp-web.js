@@ -586,15 +586,33 @@ class Client extends EventEmitter {
         return await this.pupPage.evaluate(
             async (phoneNumber, showNotification, intervalMs) => {
                 const getCode = async () => {
-                    window
-                        .require('WAWebAltDeviceLinkingApi')
-                        .setPairingType('ALT_DEVICE_LINKING');
-                    await window
-                        .require('WAWebAltDeviceLinkingApi')
-                        .initializeAltDeviceLinking();
-                    return window
-                        .require('WAWebAltDeviceLinkingApi')
-                        .startAltLinkingFlow(phoneNumber, showNotification);
+                    try {
+                        const api = window.require('WAWebAltDeviceLinkingApi');
+                        if (!api) {
+                            throw new Error(
+                                'Module "WAWebAltDeviceLinkingApi" is undefined. It might have been renamed or removed by WhatsApp Web.',
+                            );
+                        }
+                        api.setPairingType('ALT_DEVICE_LINKING');
+                        await api.initializeAltDeviceLinking();
+                        return await api.startAltLinkingFlow(
+                            phoneNumber,
+                            showNotification,
+                        );
+                    } catch (err) {
+                        const errDetails = {
+                            name: err.name || 'UnknownError',
+                            message: err.message || String(err),
+                            stack: err.stack,
+                            code: err.code,
+                            typeName: err.constructor
+                                ? err.constructor.name
+                                : 'UnknownConstructor',
+                        };
+                        throw new Error(
+                            `[startAltLinkingFlow failed] ${JSON.stringify(errDetails)}`,
+                        );
+                    }
                 };
                 if (window.codeInterval) {
                     clearInterval(window.codeInterval); // remove existing interval
