@@ -3292,6 +3292,28 @@ class Client extends EventEmitter {
     }
 
     /**
+     * Force a chat history sync request even when WhatsApp Web marks the chat as not eligible.
+     * @param {string} chatId
+     * @return {Promise<boolean>} True if the request was sent successfully, false otherwise.
+     */
+    async forceSyncHistory(chatId) {
+        return await this.pupPage.evaluate(async (chatId) => {
+            const chatWid = window.require('WAWebWidFactory').createWid(chatId);
+            const chat =
+                window.require('WAWebCollections').Chat.get(chatWid) ??
+                (await window.require('WAWebCollections').Chat.find(chatWid));
+            if (!chat?.id) return false;
+
+            await window
+                .require('WAWebSendNonMessageDataRequest')
+                .sendPeerDataOperationRequest(3, {
+                    chatId: chat.id,
+                });
+            return true;
+        }, chatId);
+    }
+
+    /**
      * Get diagnostic information for chat history sync availability.
      * @param {string} chatId
      * @return {Promise<object>}
