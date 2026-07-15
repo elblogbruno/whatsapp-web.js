@@ -3292,6 +3292,57 @@ class Client extends EventEmitter {
     }
 
     /**
+     * Get diagnostic information for chat history sync availability.
+     * @param {string} chatId
+     * @return {Promise<object>}
+     */
+    async getChatHistorySyncState(chatId) {
+        return await this.pupPage.evaluate(async (chatId) => {
+            const chatWid = window.require('WAWebWidFactory').createWid(chatId);
+            let chat = window.require('WAWebCollections').Chat.get(chatWid);
+            const foundInCollection = !!chat;
+            let findError = null;
+
+            if (!chat) {
+                try {
+                    chat = await window
+                        .require('WAWebCollections')
+                        .Chat.find(chatWid);
+                } catch (error) {
+                    findError = {
+                        name: error?.name ?? null,
+                        message: error?.message ?? String(error),
+                    };
+                }
+            }
+
+            return {
+                requestedChatId: chatId,
+                chatWid: chatWid?._serialized || chatWid?.$1 || null,
+                found: !!chat,
+                foundInCollection,
+                findError,
+                id: chat?.id?._serialized || chat?.id?.$1 || null,
+                formattedTitle: chat?.formattedTitle ?? null,
+                isGroup: !!chat?.isGroup,
+                isNewsletter: !!chat?.isNewsletter,
+                isReadOnly: !!chat?.isReadOnly,
+                archive: chat?.archive ?? null,
+                unreadCount: chat?.unreadCount ?? null,
+                messageCount:
+                    chat?.msgs?.length ?? chat?.msgs?.models?.length ?? null,
+                endOfHistoryTransferType:
+                    chat?.endOfHistoryTransferType ?? null,
+                canSyncHistory: chat?.endOfHistoryTransferType === 0,
+                lastReceivedKey:
+                    chat?.lastReceivedKey?._serialized ||
+                    chat?.lastReceivedKey?.$1 ||
+                    null,
+            };
+        }, chatId);
+    }
+
+    /**
      * Generates a WhatsApp call link (video call or voice call)
      * @param {Date} startTime The start time of the call
      * @param {string} callType The type of a WhatsApp call link to generate, valid values are: `video` | `voice`
