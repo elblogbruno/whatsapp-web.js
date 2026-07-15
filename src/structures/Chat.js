@@ -221,21 +221,40 @@ class Chat extends Base {
                     getAsModel: false,
                 });
                 let msgs = chat.msgs.getModelsArray().filter(msgFilter);
+                const debug = {
+                    chatId,
+                    requestedLimit: searchOptions?.limit ?? null,
+                    initialCount: msgs.length,
+                    loadEarlierCalls: 0,
+                    loadedCounts: [],
+                    stoppedReason: null,
+                    finalCount: null,
+                };
 
                 if (searchOptions && searchOptions.limit > 0) {
                     while (msgs.length < searchOptions.limit) {
                         const loadedMessages = await window
                             .require('WAWebChatLoadMessages')
                             .loadEarlierMsgs({ chat });
-                        if (!loadedMessages || !loadedMessages.length) break;
+                        debug.loadEarlierCalls += 1;
+                        debug.loadedCounts.push(loadedMessages?.length ?? 0);
+                        if (!loadedMessages || !loadedMessages.length) {
+                            debug.stoppedReason = 'no_loaded_messages';
+                            break;
+                        }
                         msgs = [...loadedMessages.filter(msgFilter), ...msgs];
                     }
 
                     if (msgs.length > searchOptions.limit) {
+                        debug.stoppedReason = 'limit_reached';
                         msgs.sort((a, b) => (a.t > b.t ? 1 : -1));
                         msgs = msgs.splice(msgs.length - searchOptions.limit);
                     }
+                } else {
+                    debug.stoppedReason = 'limit_not_positive';
                 }
+                debug.finalCount = msgs.length;
+                window.__wwebjsLastFetchMessagesDebug = debug;
 
                 return msgs.map((m) => window.WWebJS.getMessageModel(m));
             },
