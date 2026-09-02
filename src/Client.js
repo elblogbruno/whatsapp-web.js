@@ -540,26 +540,49 @@ class Client extends EventEmitter {
         this._framenavigatedRegistered = true;
 
         this.pupPage.on('framenavigated', async (frame) => {
-            if (frame.parentFrame() !== null) return;
+            // Nothing awaits this listener, so any rejection surfaces as an
+            // unhandledRejection and takes the consumer process down. The page
+            // is very often closed mid-navigation (logout, destroy), which
+            // detaches the frame, hence guarding the whole body.
+            try {
+                if (frame.parentFrame() !== null) return;
 
-            const isLogout =
-                frame.url().includes('post_logout=1') || this.lastLoggedOut;
+                const isLogout =
+                    frame.url().includes('post_logout=1') || this.lastLoggedOut;
 
-            if (isLogout) {
-                this.emit(Events.DISCONNECTED, 'LOGOUT');
-                await this.authStrategy.logout();
-                await this.authStrategy.beforeBrowserInitialized();
-                await this.authStrategy.afterBrowserInitialized();
-                this.lastLoggedOut = false;
+                if (isLogout) {
+                    this.lastLoggedOut = false;
+                    this.emit(Events.DISCONNECTED, 'LOGOUT');
+
+                    if (this.options.clearSessionOnLogout === false) {
+                        // The consumer owns the session. This matters
+                        // because the browser is still running here: wiping
+                        // the userDataDir underneath a live Chrome leaves a
+                        // corrupted profile (and throws EBUSY/EPERM on
+                        // Windows). No re-injection either: whoever handles
+                        // the logout is about to destroy the client.
+                        return;
+                    }
+
+                    await this.authStrategy.logout();
+                    await this.authStrategy.beforeBrowserInitialized();
+                    await this.authStrategy.afterBrowserInitialized();
+                }
+
+                const storeAvailable = await this.pupPage.evaluate(() => {
+                    return typeof window.WWebJS !== 'undefined';
+                });
+
+                if (!isLogout && storeAvailable) return;
+
+                await this.inject();
+            } catch (err) {
+                // 'error' with no listeners throws on an EventEmitter, so
+                // only emit it when someone is listening; drop it otherwise.
+                if (this.listenerCount('error') > 0) {
+                    this.emit('error', err);
+                }
             }
-
-            const storeAvailable = await this.pupPage.evaluate(() => {
-                return typeof window.WWebJS !== 'undefined';
-            });
-
-            if (!isLogout && storeAvailable) return;
-
-            await this.inject();
         });
     }
 

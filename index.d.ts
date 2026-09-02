@@ -726,6 +726,13 @@ declare namespace WAWebJS {
         /** How much time to wait before taking over the session
          * @default 0 */
         takeoverTimeoutMs?: number;
+        /** Whether the client deletes the auth strategy session when WhatsApp Web
+         * logs out on its own. Set it to false to handle the session yourself from
+         * the 'disconnected' event: the browser is still running when the logout is
+         * detected, and wiping the profile underneath it corrupts it (and throws
+         * EBUSY/EPERM on Windows).
+         * @default true */
+        clearSessionOnLogout?: boolean;
         /** User agent to use in puppeteer.
          * @default 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.109 Safari/537.36' */
         userAgent?: string;
