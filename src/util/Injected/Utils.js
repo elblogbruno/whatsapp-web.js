@@ -715,6 +715,33 @@ exports.LoadUtils = () => {
             .require('WAWebPrepRawMedia')
             .prepRawMedia(opaqueData, mediaParams);
         const mediaData = await mediaPrep.waitForPrep();
+
+        // WA's filehash is the base64 SHA-256 of the file. Some WA Web builds
+        // leave it unset after prep for documents; getOrCreateMediaObject then
+        // fails with the opaque "Data passed to getter must include an id
+        // property ... but got undefined". Compute it ourselves in that case.
+        if (!mediaData.filehash) {
+            const digest = await window.crypto.subtle.digest(
+                'SHA-256',
+                await file.arrayBuffer(),
+            );
+            let binary = '';
+            for (const byte of new Uint8Array(digest)) {
+                binary += String.fromCharCode(byte);
+            }
+            const filehash = window.btoa(binary);
+            if (typeof mediaData.set === 'function') {
+                mediaData.set({ filehash });
+            } else {
+                mediaData.filehash = filehash;
+            }
+        }
+        if (!mediaData.filehash) {
+            throw new Error(
+                `media-fault: filehash undefined after prep (type=${mediaData.type}, mimetype=${mediaData.mimetype}, size=${file.size})`,
+            );
+        }
+
         const mediaObject = window
             .require('WAWebMediaStorage')
             .getOrCreateMediaObject(mediaData.filehash);
@@ -723,10 +750,6 @@ exports.LoadUtils = () => {
             isGif: mediaData.isGif,
             isNewsletter: sendToChannel,
         });
-
-        if (!mediaData.filehash) {
-            throw new Error('media-fault: sendToChat filehash undefined');
-        }
 
         if (
             (forceVoice && mediaData.type === 'ptt') ||
