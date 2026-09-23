@@ -483,6 +483,12 @@ exports.LoadUtils = () => {
             ...extraOptions,
         };
 
+        // mediaOptions is WA's MediaData model; spreading it (and its toJSON())
+        // copies its own `id` (undefined) over the message key, and WA then
+        // fails creating the Msg with "Data passed to getter must include an
+        // id property ... but got undefined". The message key always wins.
+        message.id = newMsgKey;
+
         // Bot's won't reply if canonicalUrl is set (linking)
         if (botOptions) {
             delete message.canonicalUrl;
