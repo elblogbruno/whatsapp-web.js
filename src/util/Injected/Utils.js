@@ -573,10 +573,18 @@ exports.LoadUtils = () => {
             return msg;
         }
 
-        const [msgPromise, sendMsgResultPromise] = window
-            .require('WAWebSendMsgChatAction')
-            .addAndSendMsgToChat(chat, message);
-        await msgPromise;
+        let msgPromise, sendMsgResultPromise;
+        try {
+            [msgPromise, sendMsgResultPromise] = window
+                .require('WAWebSendMsgChatAction')
+                .addAndSendMsgToChat(chat, message);
+            await msgPromise;
+        } catch (e) {
+            if (!mediaOptions.type) throw e;
+            throw new Error(
+                `media-fault at add-msg (type=${message.type}): ${e?.message ?? e}`,
+            );
+        }
 
         if (options.waitUntilMsgSent) await sendMsgResultPromise;
 
@@ -694,11 +702,28 @@ exports.LoadUtils = () => {
             sendToStatus,
         },
     ) => {
+        // WA Web errors here are opaque (e.g. "Data passed to getter must
+        // include an id property ... but got undefined") and carry no useful
+        // stack once they reach Node. Label each step so failures say where.
+        const step = async (name, fn) => {
+            try {
+                return await fn();
+            } catch (e) {
+                const frames = String(e?.stack ?? '')
+                    .split('\n')
+                    .slice(1, 4)
+                    .map((line) => line.trim())
+                    .join(' | ');
+                throw new Error(
+                    `media-fault at ${name} (mimetype=${mediaInfo.mimetype}, bytes=${mediaInfo.filesize ?? '?'}): ${e?.message ?? e}${frames ? ` [${frames}]` : ''}`,
+                );
+            }
+        };
+
         const file = window.WWebJS.mediaInfoToFile(mediaInfo);
         const OpaqueData = window.require('WAWebMediaOpaqueData');
-        const opaqueData = await OpaqueData.createFromData(
-            file,
-            mediaInfo.mimetype,
+        const opaqueData = await step('opaque-data', () =>
+            OpaqueData.createFromData(file, mediaInfo.mimetype),
         );
         const mediaParams = {
             asSticker: forceSticker,
@@ -711,10 +736,12 @@ exports.LoadUtils = () => {
             mediaParams.maxDimension = 2560;
         }
 
-        const mediaPrep = window
-            .require('WAWebPrepRawMedia')
-            .prepRawMedia(opaqueData, mediaParams);
-        const mediaData = await mediaPrep.waitForPrep();
+        const mediaData = await step('prep', () =>
+            window
+                .require('WAWebPrepRawMedia')
+                .prepRawMedia(opaqueData, mediaParams)
+                .waitForPrep(),
+        );
 
         // WA's filehash is the base64 SHA-256 of the file. Some WA Web builds
         // leave it unset after prep for documents; getOrCreateMediaObject then
@@ -742,14 +769,18 @@ exports.LoadUtils = () => {
             );
         }
 
-        const mediaObject = window
-            .require('WAWebMediaStorage')
-            .getOrCreateMediaObject(mediaData.filehash);
-        const mediaType = window.require('WAWebMmsMediaTypes').msgToMediaType({
-            type: mediaData.type,
-            isGif: mediaData.isGif,
-            isNewsletter: sendToChannel,
-        });
+        const mediaObject = await step('media-object', () =>
+            window
+                .require('WAWebMediaStorage')
+                .getOrCreateMediaObject(mediaData.filehash),
+        );
+        const mediaType = await step('media-type', () =>
+            window.require('WAWebMmsMediaTypes').msgToMediaType({
+                type: mediaData.type,
+                isGif: mediaData.isGif,
+                isNewsletter: sendToChannel,
+            }),
+        );
 
         if (
             (forceVoice && mediaData.type === 'ptt') ||
@@ -760,28 +791,37 @@ exports.LoadUtils = () => {
                 waveform || (await window.WWebJS.generateWaveform(file));
         }
 
-        if (!(mediaData.mediaBlob instanceof OpaqueData)) {
-            mediaData.mediaBlob = await OpaqueData.createFromData(
-                mediaData.mediaBlob,
-                mediaData.mediaBlob.type,
-            );
-        }
+        await step('consolidate', async () => {
+            if (!(mediaData.mediaBlob instanceof OpaqueData)) {
+                mediaData.mediaBlob = await OpaqueData.createFromData(
+                    mediaData.mediaBlob,
+                    mediaData.mediaBlob.type,
+                );
+            }
 
-        mediaData.renderableUrl = mediaData.mediaBlob.url();
-        mediaObject.consolidate(mediaData.toJSON());
+            mediaData.renderableUrl = mediaData.mediaBlob.url();
+            mediaObject.consolidate(mediaData.toJSON());
+        });
 
-        mediaData.mediaBlob.autorelease();
-        const shouldUseMediaCache = window
-            .require('WAWebMediaDataUtils')
-            .shouldUseMediaCache(
-                window.require('WAWebMmsMediaTypes').castToV4(mediaObject.type),
-            );
-        if (shouldUseMediaCache && mediaData.mediaBlob instanceof OpaqueData) {
-            const formData = mediaData.mediaBlob.formData();
-            window
-                .require('WAWebMediaInMemoryBlobCache')
-                .InMemoryMediaBlobCache.put(mediaObject.filehash, formData);
-        }
+        await step('blob-cache', () => {
+            mediaData.mediaBlob.autorelease();
+            const shouldUseMediaCache = window
+                .require('WAWebMediaDataUtils')
+                .shouldUseMediaCache(
+                    window
+                        .require('WAWebMmsMediaTypes')
+                        .castToV4(mediaObject.type),
+                );
+            if (
+                shouldUseMediaCache &&
+                mediaData.mediaBlob instanceof OpaqueData
+            ) {
+                const formData = mediaData.mediaBlob.formData();
+                window
+                    .require('WAWebMediaInMemoryBlobCache')
+                    .InMemoryMediaBlobCache.put(mediaObject.filehash, formData);
+            }
+        });
 
         const dataToUpload = {
             mimetype: mediaData.mimetype,
@@ -798,9 +838,11 @@ exports.LoadUtils = () => {
         const { uploadMedia, uploadUnencryptedMedia } = window.require(
             'WAWebMediaMmsV4Upload',
         );
-        const uploadedMedia = !sendToChannel
-            ? await uploadMedia(dataToUpload)
-            : await uploadUnencryptedMedia(dataToUpload);
+        const uploadedMedia = await step('upload', () =>
+            !sendToChannel
+                ? uploadMedia(dataToUpload)
+                : uploadUnencryptedMedia(dataToUpload),
+        );
 
         const mediaEntry = uploadedMedia.mediaEntry;
         if (!mediaEntry) {
