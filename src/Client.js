@@ -332,32 +332,37 @@ class Client extends EventEmitter {
                                 throw 'ready timeout';
                             });
 
-                        /**
-                         * Current connection information
-                         * @type {ClientInfo}
-                         */
-                        this.info = new ClientInfo(
-                            this,
-                            await this.pupPage.evaluate(() => {
-                                return {
-                                    ...window
-                                        .require('WAWebConnModel')
-                                        .Conn.serialize(),
-                                    wid:
-                                        window
-                                            .require('WAWebUserPrefsMeUser')
-                                            .getMaybeMePnUser() ||
-                                        window
-                                            .require('WAWebUserPrefsMeUser')
-                                            .getMaybeMeLidUser(),
-                                };
-                            }),
-                        );
-
                         this.interface = new InterfaceController(this);
 
                         await this.attachEventListeners();
                     }
+
+                    /**
+                     * Current connection information
+                     * @type {ClientInfo}
+                     */
+                    // Set on every sync, not only on first injection: if
+                    // WWebJS was already injected (an earlier attempt failed
+                    // after injecting, or the event fired again), READY used
+                    // to be emitted with this.info undefined.
+                    this.info = new ClientInfo(
+                        this,
+                        await this.pupPage.evaluate(() => {
+                            return {
+                                ...window
+                                    .require('WAWebConnModel')
+                                    .Conn.serialize(),
+                                wid:
+                                    window
+                                        .require('WAWebUserPrefsMeUser')
+                                        .getMaybeMePnUser() ||
+                                    window
+                                        .require('WAWebUserPrefsMeUser')
+                                        .getMaybeMeLidUser(),
+                            };
+                        }),
+                    );
+
                     /**
                      * Emitted when the client has initialized and is ready to receive messages.
                      * @event Client#ready
