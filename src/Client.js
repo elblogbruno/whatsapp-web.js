@@ -392,7 +392,7 @@ class Client extends EventEmitter {
                         .catch((_) => _);
                 },
             );
-            await this.pupPage.evaluate(() => {
+            await this.pupPage.evaluate((isAlreadyReady) => {
                 const Socket = window.require('WAWebSocketModel').Socket;
                 const Cmd = window.require('WAWebCmd').Cmd;
 
@@ -454,10 +454,13 @@ class Client extends EventEmitter {
                 // If hasSynced is already true, Backbone won't fire change:hasSynced (no transition).
                 // If hasSynced is false, the listener above will catch the future transition.
                 const storeInjected = typeof window.WWebJS !== 'undefined';
-                if (Socket.hasSynced === true && !storeInjected) {
+                if (
+                    Socket.hasSynced === true &&
+                    (!storeInjected || !isAlreadyReady)
+                ) {
                     window.onAppStateHasSyncedEvent();
                 }
-            });
+            }, Boolean(this.info));
         } catch (err) {
             if (abort.signal.aborted) return; // superseded by newer inject
             throw err;
@@ -593,13 +596,44 @@ class Client extends EventEmitter {
                     await this.authStrategy.afterBrowserInitialized();
                 }
 
-                const storeAvailable = await this.pupPage.evaluate(() => {
-                    return typeof window.WWebJS !== 'undefined';
-                });
+                // Wait for the new document to settle and WA modules to be available
+                const maxRetries = 30;
+                for (let attempt = 0; attempt < maxRetries; attempt++) {
+                    if (this.pupPage.isClosed()) return;
+                    try {
+                        const state = await this.pupPage.evaluate(() => {
+                            const hasRequire =
+                                typeof window.require === 'function';
+                            let hasSocket = false;
+                            if (hasRequire) {
+                                try {
+                                    hasSocket = Boolean(
+                                        window.require('WAWebSocketModel')
+                                            ?.Socket,
+                                    );
+                                } catch (ignoredError) {
+                                    hasSocket = false;
+                                }
+                            }
+                            return {
+                                storeAvailable:
+                                    typeof window.WWebJS !== 'undefined',
+                                readyForInject: hasRequire && hasSocket,
+                            };
+                        });
 
-                if (!isLogout && storeAvailable) return;
+                        if (state.storeAvailable) return;
 
-                await this.inject();
+                        if (state.readyForInject) {
+                            await this.inject();
+                            return;
+                        }
+                    } catch (ignoredError) {
+                        // Context destroyed or frame navigating, will retry
+                        void ignoredError;
+                    }
+                    await new Promise((resolve) => setTimeout(resolve, 500));
+                }
             } catch (err) {
                 // 'error' with no listeners throws on an EventEmitter, so
                 // only emit it when someone is listening; drop it otherwise.
