@@ -2208,9 +2208,20 @@ class Client extends EventEmitter {
         const couldSet = await this.pupPage.evaluate(async (displayName) => {
             if (!window.require('WAWebConnModel').Conn.canSetMyPushname())
                 return false;
-            await window
-                .require('WAWebSetPushnameConnAction')
-                .setPushname(displayName);
+            // Con el A/B wa_web_disable_prefetch_loadables el modulo solo se
+            // carga al abrir el drawer de perfil (wwebjs #3971 / PR #3972).
+            let pushnameAction = window.require('WAWebSetPushnameConnAction');
+            if (!pushnameAction) {
+                const bundle = window.require(
+                    'WAWebProfileDrawerLoadableRequireBundle',
+                );
+                if (bundle?.requireBundle) await bundle.requireBundle();
+                if (bundle?.loadBundle) await bundle.loadBundle();
+                pushnameAction = window.require('WAWebSetPushnameConnAction');
+            }
+            if (!pushnameAction)
+                throw new Error('WAWebSetPushnameConnAction not available');
+            await pushnameAction.setPushname(displayName);
             return true;
         }, displayName);
 
