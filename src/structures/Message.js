@@ -568,6 +568,9 @@ class Message extends Base {
                         mediaKey: msg.mediaKey,
                         mediaKeyTimestamp: msg.mediaKeyTimestamp,
                         type: msg.type,
+                        // Sin mimetype WA Web asume application/octet-stream y rechaza
+                        // con InvalidMediaFileType (llega minificado como "t: t").
+                        mimetype: msg.mimetype,
                         signal: new AbortController().signal,
                         downloadQpl: mockQpl,
                     });
