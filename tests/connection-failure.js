@@ -62,6 +62,11 @@ describe('WhatsApp Web connection failure telemetry', function () {
             parser.parse({ tag: 'failure', parsed: { reason: 401, code: 7 } });
             parser.parse({ tag: 'failure', parsed: { reason: 599 } });
             parser.parse({
+                tag: 'failure',
+                attrs: { reason: '402', code: '104', expire: '86400' },
+                parsed: { reason: 402, code: 104 },
+            });
+            parser.parse({
                 tag: 'stream:error',
                 parsed: { type: 'code', code: 516 },
             });
@@ -82,8 +87,25 @@ describe('WhatsApp Web connection failure telemetry', function () {
                 reason: 401,
                 reasonName: 'REASON_NOT_AUTHORIZED',
                 code: 7,
+                expire: null,
+                attrs: null,
             },
-            { kind: 'failure', reason: 599, reasonName: null, code: null },
+            {
+                kind: 'failure',
+                reason: 599,
+                reasonName: null,
+                code: null,
+                expire: null,
+                attrs: null,
+            },
+            {
+                kind: 'failure',
+                reason: 402,
+                reasonName: null,
+                code: 104,
+                expire: '86400',
+                attrs: { reason: '402', code: '104', expire: '86400' },
+            },
             {
                 kind: 'stream_error',
                 type: 'code',
