@@ -319,6 +319,12 @@ declare namespace WAWebJS {
         /** Deletes the contact from user's addressbook */
         deleteAddressbookContact(honeNumber: string): Promise<void>;
 
+        /** Integrity signals WhatsApp shows whoever gets a first message from this user (new account, suspicious start of chat) */
+        getIntegritySignals(userId: string): Promise<{
+            isNewAccount: boolean | null;
+            isSuspicious: boolean | null;
+        } | null>;
+
         /** Get Contact lid and phone */
         getContactLidAndPhone(
             userIds: string[],

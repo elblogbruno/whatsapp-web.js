@@ -3685,6 +3685,26 @@ class Client extends EventEmitter {
     }
 
     /**
+     * Integrity signals WhatsApp shows whoever gets a first message from this
+     * user (FMX safety tools): whether the account is new and whether starting
+     * a chat with it looks suspicious. The server answers for any user, not
+     * only for those who already wrote to us, even when WhatsApp Web itself
+     * has the FMX check disabled.
+     * @param {string} userId - e.g. '34600000000@c.us' or a '@lid' id
+     * @returns {Promise<{ isNewAccount: boolean|null, isSuspicious: boolean|null }|null>} null when the server returns nothing or the query fails
+     */
+    async getIntegritySignals(userId) {
+        return await this.pupPage.evaluate(async (userId) => {
+            const widFactory = window.require('WAWebWidFactory');
+            return await window
+                .require('WAWebMexFetchIntegritySignals')
+                .fetchIntegritySignals(
+                    widFactory.asUserWidOrThrow(widFactory.createWid(userId)),
+                );
+        }, userId);
+    }
+
+    /**
      * Get lid and phone number for multiple users
      * @param {string[]} userIds - Array of user IDs
      * @returns {Promise<Array<{ lid: string, pn: string }>>}
