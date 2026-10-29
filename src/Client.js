@@ -3705,6 +3705,40 @@ class Client extends EventEmitter {
     }
 
     /**
+     * How many 1:1 chats active in the last `sinceDays` days have a valid
+     * trusted-contact token (tcToken), i.e. the other user wrote to us. A
+     * restricted account can only write to those, and an account that writes
+     * to many users who never answer is the kind WhatsApp ends up removing.
+     * Tokens stay valid for tctoken_duration * tctoken_num_buckets (about six
+     * months), so they say "wrote to us at some point", not "this week".
+     * @param {number} [sinceDays=7]
+     * @returns {Promise<{ activeChats: number, activeWithToken: number, chatsWithToken: number }>}
+     */
+    async getTrustedContactsStats(sinceDays = 7) {
+        return await this.pupPage.evaluate((sinceDays) => {
+            const trust = window.require('WAWebTrustedContactsUtils');
+            const since = Date.now() / 1000 - sinceDays * 24 * 60 * 60;
+            const chats = window
+                .require('WAWebCollections')
+                .Chat.getModelsArray()
+                .filter((chat) => chat.id?.isUser?.());
+            const hasToken = (chat) =>
+                chat.tcToken != null &&
+                chat.tcTokenTimestamp != null &&
+                !trust.isTokenExpired(
+                    chat.tcTokenTimestamp,
+                    trust.TcTokenMode.Receiver,
+                );
+            const active = chats.filter((chat) => (chat.t ?? 0) >= since);
+            return {
+                activeChats: active.length,
+                activeWithToken: active.filter(hasToken).length,
+                chatsWithToken: chats.filter(hasToken).length,
+            };
+        }, sinceDays);
+    }
+
+    /**
      * Get lid and phone number for multiple users
      * @param {string[]} userIds - Array of user IDs
      * @returns {Promise<Array<{ lid: string, pn: string }>>}

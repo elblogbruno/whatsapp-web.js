@@ -325,6 +325,13 @@ declare namespace WAWebJS {
             isSuspicious: boolean | null;
         } | null>;
 
+        /** 1:1 chats active in the last `sinceDays` days (default 7) and how many of them have a valid trusted-contact token (the user wrote to us) */
+        getTrustedContactsStats(sinceDays?: number): Promise<{
+            activeChats: number;
+            activeWithToken: number;
+            chatsWithToken: number;
+        }>;
+
         /** Get Contact lid and phone */
         getContactLidAndPhone(
             userIds: string[],
