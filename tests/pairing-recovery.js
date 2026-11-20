@@ -22,6 +22,7 @@ function setup() {
     const timers = new Map();
     let timerId = 0;
     const modules = {
+        WAWebCmd: { Cmd: {} },
         WAWebConnModel: { Conn: conn },
         WAWebSocketModel: { Socket: socket },
         WAWebSignalStoreApi: {
@@ -89,10 +90,10 @@ function setup() {
             jsonValue: async () => ({ need: true }),
         }),
         async exposeFunction(name, callback) {
+            pageWindow[name] = callback;
             if (name === 'onAuthAppStateChangedEvent') {
                 throw new Error('stop after QR setup');
             }
-            pageWindow[name] = callback;
         },
         async evaluate(callback, ...args) {
             context.args = args;
@@ -118,6 +119,31 @@ function setup() {
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
 describe('Pairing failure recovery', function () {
+    it('refreshes idle QR through LaunchSocketUtils without the removed Cmd API', async function () {
+        const test = setup();
+        await assert.rejects(test.client.inject(), /stop after QR setup/);
+        await test.pageWindow.onAuthAppStateChangedEvent('UNPAIRED');
+        assert.equal(test.state.refreshes.length, 0);
+        await test.pageWindow.onAuthAppStateChangedEvent('UNPAIRED_IDLE');
+        assert.deepEqual(test.state.refreshes, ['initial-secret']);
+        test.client.options.pairWithPhoneNumber.phoneNumber = '123';
+        await test.pageWindow.onAuthAppStateChangedEvent('UNPAIRED_IDLE');
+        assert.equal(test.state.refreshes.length, 1);
+    });
+
+    it('waits for the idle QR refresh and propagates its failure', async function () {
+        const test = setup();
+        await assert.rejects(test.client.inject(), /stop after QR setup/);
+        test.pageWindow.require('WAWebLaunchSocketUtils').refreshQR =
+            async () => {
+                throw new Error('refresh failed');
+            };
+        await assert.rejects(
+            test.pageWindow.onAuthAppStateChangedEvent('UNPAIRED_IDLE'),
+            /refresh failed/,
+        );
+    });
+
     it('propagates configured phone pairing failures through inject', async function () {
         const test = setup();
         test.client.options.pairWithPhoneNumber.phoneNumber = '123';
