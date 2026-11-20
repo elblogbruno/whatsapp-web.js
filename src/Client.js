@@ -484,7 +484,7 @@ class Client extends EventEmitter {
 
                 // Register qr/code events
                 if (pairWithPhoneNumber.phoneNumber) {
-                    this.requestPairingCode(
+                    await this.requestPairingCode(
                         pairWithPhoneNumber.phoneNumber,
                         pairWithPhoneNumber.showNotification,
                         pairWithPhoneNumber.intervalMs,
@@ -520,54 +520,64 @@ class Client extends EventEmitter {
                     );
 
                     await this.pupPage.evaluate(async () => {
-                        const registrationInfo = await window
-                            .require('WAWebSignalStoreApi')
-                            .waSignalStore.getRegistrationInfo();
-                        const noiseKeyPair = await window
-                            .require('WAWebUserPrefsInfoStore')
-                            .waNoiseInfo.get();
-                        const staticKeyB64 = window
-                            .require('WABase64')
-                            .encodeB64(noiseKeyPair.staticKeyPair.pubKey);
-                        const identityKeyB64 = window
-                            .require('WABase64')
-                            .encodeB64(registrationInfo.identityKeyPair.pubKey);
-                        const advSecretKey = await window
-                            .require('WAWebUserPrefsMultiDevice')
-                            .getADVSecretKey();
-                        const platform = window.require(
-                            'WAWebCompanionRegClientUtils',
-                        ).DEVICE_PLATFORM;
-                        const getQR = (ref) =>
-                            ref +
-                            ',' +
-                            staticKeyB64 +
-                            ',' +
-                            identityKeyB64 +
-                            ',' +
-                            advSecretKey +
-                            ',' +
-                            platform;
-
-                        const onRefChange = (_, ref) => {
-                            if (ref == null) return;
-                            window.onQRChangedEvent(getQR(ref));
+                        const conn = window.require('WAWebConnModel').Conn;
+                        const prefs = window.require(
+                            'WAWebUserPrefsMultiDevice',
+                        );
+                        const emitQR = async () => {
+                            const registrationInfo = await window
+                                .require('WAWebSignalStoreApi')
+                                .waSignalStore.getRegistrationInfo();
+                            const noiseKeyPair = await window
+                                .require('WAWebUserPrefsInfoStore')
+                                .waNoiseInfo.get();
+                            const advSecretKey = await prefs.getADVSecretKey();
+                            const ref = conn.ref;
+                            if (
+                                !ref ||
+                                !registrationInfo?.identityKeyPair?.pubKey ||
+                                !noiseKeyPair?.staticKeyPair?.pubKey ||
+                                !advSecretKey
+                            ) {
+                                return;
+                            }
+                            const { encodeB64 } = window.require('WABase64');
+                            const { DEVICE_PLATFORM } = window.require(
+                                'WAWebCompanionRegClientUtils',
+                            );
+                            await window.onQRChangedEvent(
+                                [
+                                    ref,
+                                    encodeB64(
+                                        noiseKeyPair.staticKeyPair.pubKey,
+                                    ),
+                                    encodeB64(
+                                        registrationInfo.identityKeyPair.pubKey,
+                                    ),
+                                    advSecretKey,
+                                    DEVICE_PLATFORM,
+                                ].join(','),
+                            );
+                        };
+                        const onQRChange = () => {
+                            emitQR().catch((err) => {
+                                console.warn('QR code refresh failed', err);
+                            });
                         };
 
-                        window.onQRChangedEvent(
-                            getQR(window.require('WAWebConnModel').Conn.ref),
-                        ); // initial qr
-                        window
-                            .require('WAWebConnModel')
-                            .Conn.on('change:ref', onRefChange); // future QR changes
+                        conn.on('change:ref', onQRChange);
+                        prefs.advSecretEventEmitter?.on('change', onQRChange);
+                        await emitQR();
 
-                        // Remove QR listener once authentication succeeds
+                        // Remove both listeners once authentication succeeds.
                         window
                             .require('WAWebSocketModel')
                             .Socket.on('change:hasSynced', () => {
-                                window
-                                    .require('WAWebConnModel')
-                                    .Conn.off('change:ref', onRefChange);
+                                conn.off('change:ref', onQRChange);
+                                prefs.advSecretEventEmitter?.off(
+                                    'change',
+                                    onQRChange,
+                                );
                             });
                     });
                 }
@@ -1005,6 +1015,18 @@ class Client extends EventEmitter {
                             showNotification,
                         );
                     } catch (err) {
+                        clearInterval(window.codeInterval);
+                        window.codeInterval = undefined;
+                        try {
+                            await window
+                                .require('WAWebAltDeviceLinkingApi')
+                                .initializeQRLinking();
+                            await window
+                                .require('WAWebLaunchSocketUtils')
+                                .refreshQR();
+                        } catch (ignoredError) {
+                            // Preserve the original pairing error if QR recovery fails.
+                        }
                         const errDetails = {
                             name: err.name || 'UnknownError',
                             message: err.message || String(err),
@@ -1022,16 +1044,23 @@ class Client extends EventEmitter {
                 if (window.codeInterval) {
                     clearInterval(window.codeInterval); // remove existing interval
                 }
+                window.codeInterval = undefined;
+                const code = await getCode();
                 window.codeInterval = setInterval(async () => {
                     const state =
                         window.require('WAWebSocketModel').Socket.state;
                     if (state != 'UNPAIRED' && state != 'UNPAIRED_IDLE') {
                         clearInterval(window.codeInterval);
+                        window.codeInterval = undefined;
                         return;
                     }
-                    window.onCodeReceivedEvent(await getCode());
+                    try {
+                        await window.onCodeReceivedEvent(await getCode());
+                    } catch (err) {
+                        console.warn('Pairing code refresh failed', err);
+                    }
                 }, intervalMs);
-                return window.onCodeReceivedEvent(await getCode());
+                return window.onCodeReceivedEvent(code);
             },
             phoneNumber,
             showNotification,
@@ -1048,10 +1077,10 @@ class Client extends EventEmitter {
                 clearInterval(window.codeInterval);
                 window.codeInterval = undefined;
             }
-            window.require('WAWebLaunchSocketUtils').refreshQR();
             await window
                 .require('WAWebAltDeviceLinkingApi')
                 .initializeQRLinking();
+            await window.require('WAWebLaunchSocketUtils').refreshQR();
         });
     }
 
